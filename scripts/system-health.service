@@ -1,0 +1,10 @@
+[Unit]
+Description=System Health Check
+Wants=system-health.timer
+
+[Service]
+Type=oneshot
+ExecStart=/opt/scripts/system_health.sh --cpu 90 --mem 85 --disk 80
+StandardOutput=append:/var/log/health_log.txt
+StandardError=journal
+User=root

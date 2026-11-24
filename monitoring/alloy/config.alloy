@@ -1,0 +1,56 @@
+// Grafana Alloy configuration for log collection
+// Discovers all running Docker containers and ships logs to Loki
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "container"
+    regex         = "/(.*)"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "docker_logs" {
+  host    = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.containers.output
+
+  forward_to = [loki.process.app_json.receiver]
+}
+
+// Parse structured JSON logs from the app
+loki.process "app_json" {
+  stage.json {
+    expressions = {
+      level     = "level",
+      path      = "path",
+      method    = "method",
+      status    = "status_code",
+    }
+  }
+
+  // Keep label cardinality low — only level & service
+  stage.labels {
+    values = {
+      level   = "",
+      service = "",
+    }
+  }
+
+  forward_to = [loki.write.loki.receiver]
+}
+
+loki.write "loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

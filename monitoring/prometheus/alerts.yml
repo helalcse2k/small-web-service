@@ -1,0 +1,45 @@
+groups:
+  - name: app_alerts
+    rules:
+      - alert: AppInstanceDown
+        expr: up{job="app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "App instance down"
+          description: "The application instance has been down for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          rate(http_errors_total[5m]) /
+          rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate (>5%)"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: HostDiskUsageHigh
+        expr: |
+          (node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} -
+           node_filesystem_free_bytes{fstype!~"tmpfs|overlay"}) /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} > 0.80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage above 80% on {{ $labels.mountpoint }}"
+          description: "Disk usage is {{ $value | humanizePercentage }}."
+
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          container_memory_usage_bytes /
+          container_spec_memory_limit_bytes > 0.85
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} memory near limit (>85%)"
+          description: "Memory usage is {{ $value | humanizePercentage }} of limit."
