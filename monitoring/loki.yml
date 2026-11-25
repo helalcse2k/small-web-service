@@ -1,5 +1,8 @@
 auth_enabled: false
 
+common:
+  path_prefix: /loki
+
 server:
   http_listen_port: 3100
 
@@ -35,6 +38,7 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+  delete_request_store: filesystem
 
 limits_config:
   retention_period: 720h    # 30 days

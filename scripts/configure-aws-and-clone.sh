@@ -35,9 +35,9 @@ section "3. Clone your GitHub repository"
 warn "Enter your GitHub repo URL (e.g. https://github.com/username/devops-task.git):"
 read -r REPO_URL
 
-cd ~/devops-task
+cd ~/devops-task || exit 1
 git clone "$REPO_URL" app
-cd app
+cd app || exit 1
 info "Repo cloned to ~/devops-task/app"
 
 section "4. Set up SSH key for EC2 deploy target"
