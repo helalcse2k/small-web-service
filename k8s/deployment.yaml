@@ -25,13 +25,15 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: ecr-secret
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
       containers:
         - name: app
-          image: YOUR_ECR_REPO/devops-task-service:sha-abc1234
+          image: 277269414266.dkr.ecr.us-east-1.amazonaws.com/devops-task-care-guide-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
