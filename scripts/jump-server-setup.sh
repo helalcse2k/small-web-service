@@ -33,7 +33,7 @@ sudo apt-get install -y \
 info "Base packages installed"
 
 section "2. Docker Engine"
-# Remove any old versions
+# Remove any old versions.
 sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
 
 # Add Docker's official GPG key and repo
