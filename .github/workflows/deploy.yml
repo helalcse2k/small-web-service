@@ -165,7 +165,7 @@ jobs:
             --overwrite
           echo "✅ Recorded tag: ${{ env.IMAGE_TAG }}"
 
-      # On failure: pull and re-run the previous known-good image
+      # On failure: pull and re-run the previous known-good image.
       - name: Rollback to previous image
         if: failure() && steps.previous.outputs.tag != 'none'
         run: |
