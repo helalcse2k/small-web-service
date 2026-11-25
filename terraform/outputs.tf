@@ -27,3 +27,8 @@ output "ssh_command" {
   description = "SSH command to connect to the EC2 instance"
   value       = "ssh -i ~/.ssh/devops-task-key.pem ec2-user@${aws_instance.app.public_ip}"
 }
+
+output "ecr_repository_url" {
+  description = "ECR repository URI"
+  value       = aws_ecr_repository.app.repository_url
+}

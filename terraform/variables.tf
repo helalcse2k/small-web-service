@@ -21,6 +21,12 @@ variable "app_version" {
   default     = "latest"
 }
 
+variable "ecr_repository_name" {
+  description = "Name of the ECR repository"
+  type        = string
+  default     = "devops-task-care-guide-service"
+}
+
 variable "ecr_repository" {
   description = "Full ECR repository URI (without tag)"
   type        = string
