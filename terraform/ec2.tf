@@ -104,7 +104,7 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 # ── Security Group ─────────────────────────────────────────────────────────────
 resource "aws_security_group" "app" {
   name        = "devops-task-${var.environment}"
-  description = "DevOps task app SG – ${var.environment}"
+  description = "DevOps task app SG - ${var.environment}"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
