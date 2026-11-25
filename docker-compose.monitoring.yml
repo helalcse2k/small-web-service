@@ -8,11 +8,12 @@ services:
       - "--storage.tsdb.retention.time=15d"
       - "--web.enable-lifecycle"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     networks:
       - monitoring
+      - internal
     restart: unless-stopped
 
   loki:
@@ -20,7 +21,7 @@ services:
     container_name: loki
     command: -config.file=/etc/loki/loki.yml
     volumes:
-      - ./loki.yml:/etc/loki/loki.yml:ro
+      - ./monitoring/loki.yml:/etc/loki/loki.yml:ro
       - loki_data:/loki
     networks:
       - monitoring
@@ -31,7 +32,7 @@ services:
     container_name: alloy
     command: run /etc/alloy/config.alloy
     volumes:
-      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
     networks:
@@ -78,8 +79,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     networks:
       - monitoring
@@ -90,6 +91,8 @@ services:
 
 networks:
   monitoring:
+    driver: bridge
+  internal:
     driver: bridge
 
 volumes:
