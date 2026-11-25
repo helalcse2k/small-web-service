@@ -8,7 +8,7 @@
 set -euo pipefail
 
 # ── Colours ───────────────────────────────────────────────────────────────────
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 section() { echo -e "\n${GREEN}========================================${NC}"; \
@@ -57,7 +57,7 @@ sudo usermod -aG docker "$CURRENT_USER"
 info "Docker installed: $(docker --version)"
 
 section "3. AWS CLI v2"
-cd /tmp
+cd /tmp || exit 1
 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
 unzip -q awscliv2.zip
 sudo ./aws/install --update
@@ -65,7 +65,7 @@ rm -rf awscliv2.zip aws/
 info "AWS CLI installed: $(aws --version)"
 
 section "4. Terraform ${TERRAFORM_VERSION}"
-cd /tmp
+cd /tmp || exit 1
 curl -fsSL \
   "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
   -o terraform.zip
@@ -91,7 +91,7 @@ rm -f /tmp/minikube
 info "Minikube installed: $(minikube version --short)"
 
 section "7. Helm ${HELM_VERSION}"
-cd /tmp
+cd /tmp || exit 1
 curl -fsSL \
   "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
   -o helm.tar.gz
@@ -134,7 +134,7 @@ echo "  Docker       $(docker --version | awk '{print $3}' | tr -d ',')"
 echo "  Docker Compose $(docker compose version | awk '{print $4}')"
 echo "  AWS CLI      $(aws --version | awk '{print $1}' | cut -d/ -f2)"
 echo "  Terraform    $(terraform --version | head -1 | awk '{print $2}')"
-echo "  kubectl      $(kubectl version --client -o json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["clientVersion"]["gitVersion"])' 2>/dev/null || echo $KUBECTL_VERSION)"
+echo "  kubectl      $(kubectl version --client -o json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["clientVersion"]["gitVersion"])' 2>/dev/null || echo "$KUBECTL_VERSION")"
 echo "  Minikube     $(minikube version --short)"
 echo "  Helm         $(helm version --short)"
 echo "  shellcheck   $(shellcheck --version | grep version | awk '{print $2}')"
