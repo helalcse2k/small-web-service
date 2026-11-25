@@ -104,7 +104,7 @@ section "8. conntrack (required by Minikube none driver)"
 sudo apt-get install -y conntrack socat
 
 section "9. Shell Utilities — shellcheck, hadolint"
-# shellcheck (for linting scripts)
+# Install shellcheck (for linting scripts)
 sudo apt-get install -y shellcheck
 info "shellcheck: $(shellcheck --version | head -2)"
 
