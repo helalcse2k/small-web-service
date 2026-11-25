@@ -26,7 +26,7 @@ systemctl restart docker
 
 # Pull and run the application
 aws ecr get-login-password --region "${aws_region}" | \
-  docker login --username AWS --password-stdin "${ecr_repository%%/*}"
+  docker login --username AWS --password-stdin "${split("/", ecr_repository)[0]}"
 
 docker pull "${ecr_repository}:${app_version}"
 
