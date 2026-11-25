@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Prevent concurrent deploys from racing on the same EC2 instance
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 # OIDC: id-token write is required for GitHub → AWS authentication
 # Assessment spec: "prefer GitHub OIDC over long-lived access keys"
 permissions:
@@ -120,6 +125,7 @@ jobs:
               'docker stop devops-app 2>/dev/null || true',
               'docker rm   devops-app 2>/dev/null || true',
               'docker run -d --name devops-app --restart unless-stopped -p 8080:8080 -e ENV_NAME=production -e APP_VERSION=${{ env.IMAGE_TAG }} ${FULL_IMAGE}',
+              'docker network connect small-web-service_internal devops-app 2>/dev/null || true',
               'sleep 8',
               'wget -qO- http://localhost:8080/health || exit 1'
             ]" \
@@ -138,10 +144,13 @@ jobs:
       - name: Smoke test GET /health
         id: smoke
         run: |
-          EC2_IP="${{ secrets.EC2_PUBLIC_IP }}"
-          echo "Smoke testing http://${EC2_IP}:8080/health ..."
+          TARGET_URL="${{ vars.APP_URL }}"
+          if [ -z "$TARGET_URL" ]; then
+            TARGET_URL="http://${{ secrets.EC2_PUBLIC_IP }}:8080"
+          fi
+          echo "Smoke testing ${TARGET_URL}/health ..."
           for i in 1 2 3 4 5; do
-            STATUS=$(curl -sf "http://${EC2_IP}:8080/health" \
+            STATUS=$(curl -sf "${TARGET_URL}/health" \
               | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" \
               2>/dev/null || echo "")
             if [ "$STATUS" = "healthy" ]; then
@@ -179,7 +188,8 @@ jobs:
               'docker pull ${PREV_IMAGE}',
               'docker stop devops-app 2>/dev/null || true',
               'docker rm   devops-app 2>/dev/null || true',
-              'docker run -d --name devops-app --restart unless-stopped -p 8080:8080 -e ENV_NAME=production ${PREV_IMAGE}'
+              'docker run -d --name devops-app --restart unless-stopped -p 8080:8080 -e ENV_NAME=production ${PREV_IMAGE}',
+              'docker network connect small-web-service_internal devops-app 2>/dev/null || true'
             ]"
           echo "::error::Deploy failed — rolled back to ${{ steps.previous.outputs.tag }}"
           exit 1
