@@ -29,7 +29,13 @@ variable "ecr_repository" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.large"   # t3.large needed for Minikube (2 vCPU, 8 GB RAM)
+}
+
+variable "key_name" {
+  description = "EC2 SSH key pair name (must exist in AWS)"
+  type        = string
+  default     = "devops-task-key"
 }
 
 variable "log_retention_days" {

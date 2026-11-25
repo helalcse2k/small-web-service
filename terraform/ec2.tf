@@ -115,6 +115,22 @@ resource "aws_security_group" "app" {
     cidr_blocks = var.allowed_cidr
   }
 
+  ingress {
+    description = "SSH access"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]   # Restrict to your IP in production
+  }
+
+  ingress {
+    description = "Grafana monitoring dashboard"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_cidr
+  }
+
   egress {
     description = "Allow all outbound"
     from_port   = 0
@@ -133,6 +149,7 @@ resource "aws_instance" "app" {
   subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.app.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  key_name               = var.key_name   # SSH key for direct access
 
   user_data = base64encode(templatefile("${path.module}/userdata.sh.tpl", {
     ecr_repository  = var.ecr_repository

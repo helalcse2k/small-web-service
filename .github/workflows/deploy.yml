@@ -5,16 +5,19 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# OIDC: id-token write is required for GitHub → AWS authentication
+# Assessment spec: "prefer GitHub OIDC over long-lived access keys"
 permissions:
   contents: read
-  id-token: write   # OIDC for AWS
+  id-token: write
 
 env:
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-  ECR_REPOSITORY: devops-task-service
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY_NAME }}
   AWS_REGION: ${{ secrets.AWS_REGION }}
 
 jobs:
+  # ── Job 1: Build multi-arch image and push to ECR ─────────────────────────
   build-and-push:
     name: Multi-arch Build & Push
     runs-on: ubuntu-latest
@@ -33,7 +36,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Configure AWS credentials (OIDC – no long-lived keys)
+      # GitHub OIDC — no long-lived access keys stored anywhere
+      - name: Configure AWS credentials via GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -43,7 +47,8 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Extract Docker metadata (semver + SHA tags)
+      # Tags: sha-<short-commit>, semver (from git tag), and latest on main
+      - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -54,6 +59,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # Multi-arch: linux/amd64 and linux/arm64 with GHA layer caching
       - name: Build and push multi-arch image
         id: build
         uses: docker/build-push-action@v6
@@ -64,9 +70,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── Job 2: Deploy to EC2 via SSM + smoke test + auto-rollback ────────────
   deploy:
     name: Deploy to EC2 & Smoke Test
     runs-on: ubuntu-latest
@@ -77,13 +86,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials via GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Save previous image tag for rollback
+      # Save previous tag from SSM so we can roll back if needed
+      - name: Get previous image tag for rollback
         id: previous
         run: |
           PREV=$(aws ssm get-parameter \
@@ -91,55 +101,61 @@ jobs:
             --query Parameter.Value \
             --output text 2>/dev/null || echo "none")
           echo "tag=$PREV" >> "$GITHUB_OUTPUT"
+          echo "Previous tag: $PREV"
 
-      - name: Deploy via SSM Run Command
+      # Pull new image and hot-swap the container via SSM Run Command
+      - name: Deploy new image via SSM
         id: deploy
         run: |
           FULL_IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
-          aws ssm send-command \
+          echo "Deploying: $FULL_IMAGE"
+
+          CMD_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
+            --comment "Deploy ${{ env.IMAGE_TAG }}" \
             --parameters "commands=[
               'aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}',
               'docker pull ${FULL_IMAGE}',
               'docker stop devops-app 2>/dev/null || true',
-              'docker rm devops-app 2>/dev/null || true',
-              'docker run -d --name devops-app --restart unless-stopped -p 8080:8080 -e ENV_NAME=production ${FULL_IMAGE}',
-              'sleep 5',
+              'docker rm   devops-app 2>/dev/null || true',
+              'docker run -d --name devops-app --restart unless-stopped -p 8080:8080 -e ENV_NAME=production -e APP_VERSION=${{ env.IMAGE_TAG }} ${FULL_IMAGE}',
+              'sleep 8',
               'wget -qO- http://localhost:8080/health || exit 1'
             ]" \
             --output text \
-            --query "Command.CommandId"
-
-      - name: Wait for deployment command
-        run: |
-          CMD_ID=$(aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["echo ok"]' \
-            --output text \
             --query "Command.CommandId")
+
+          echo "SSM Command ID: $CMD_ID"
+          echo "cmd_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+
+          # Wait for command to complete
           aws ssm wait command-executed \
             --command-id "$CMD_ID" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
 
-      - name: Smoke test /health endpoint
+      # Hit /health from outside — confirm the app is publicly reachable
+      - name: Smoke test GET /health
         id: smoke
         run: |
           EC2_IP="${{ secrets.EC2_PUBLIC_IP }}"
+          echo "Smoke testing http://${EC2_IP}:8080/health ..."
           for i in 1 2 3 4 5; do
-            STATUS=$(curl -sf "http://${EC2_IP}:8080/health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
+            STATUS=$(curl -sf "http://${EC2_IP}:8080/health" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" \
+              2>/dev/null || echo "")
             if [ "$STATUS" = "healthy" ]; then
-              echo "Smoke test passed on attempt $i"
+              echo "✅ Smoke test passed on attempt $i"
               exit 0
             fi
-            echo "Attempt $i failed, retrying in 10s..."
+            echo "⏳ Attempt $i failed — retrying in 10s..."
             sleep 10
           done
-          echo "Smoke test failed"
+          echo "❌ Smoke test failed after 5 attempts"
           exit 1
 
-      - name: Record current image tag in SSM
+      # On success: record the new tag so next deploy knows what to roll back to
+      - name: Record deployed tag in SSM Parameter Store
         if: success()
         run: |
           aws ssm put-parameter \
@@ -147,20 +163,23 @@ jobs:
             --value "${{ env.IMAGE_TAG }}" \
             --type String \
             --overwrite
+          echo "✅ Recorded tag: ${{ env.IMAGE_TAG }}"
 
-      - name: Rollback to previous image on failure
+      # On failure: pull and re-run the previous known-good image
+      - name: Rollback to previous image
         if: failure() && steps.previous.outputs.tag != 'none'
         run: |
           PREV_IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.previous.outputs.tag }}"
-          echo "Rolling back to $PREV_IMAGE"
+          echo "⚠️  Rolling back to $PREV_IMAGE"
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
+            --comment "Rollback to ${{ steps.previous.outputs.tag }}" \
             --parameters "commands=[
               'docker pull ${PREV_IMAGE}',
               'docker stop devops-app 2>/dev/null || true',
-              'docker rm devops-app 2>/dev/null || true',
+              'docker rm   devops-app 2>/dev/null || true',
               'docker run -d --name devops-app --restart unless-stopped -p 8080:8080 -e ENV_NAME=production ${PREV_IMAGE}'
             ]"
-          echo "::error::Deployment failed – rolled back to ${{ steps.previous.outputs.tag }}"
+          echo "::error::Deploy failed — rolled back to ${{ steps.previous.outputs.tag }}"
           exit 1

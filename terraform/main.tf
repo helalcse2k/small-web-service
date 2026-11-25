@@ -9,11 +9,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "devops-task-tfstate"      # pre-create this bucket
+    bucket         = "devops-task-care-guide-tfstate"
     key            = "devops-task/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "devops-task-tflock"       # pre-create this DynamoDB table
+    dynamodb_table = "devops-task-care-guide-tflock"
   }
 }
 

@@ -7,12 +7,12 @@ services:
     container_name: devops-app
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:8080"
     environment:
-      PORT: "8080"
-      LOG_LEVEL: "info"
-      ENV_NAME: "local"
-      APP_VERSION: "1.0.0"
+      PORT: "${PORT:-8080}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      ENV_NAME: "${ENV_NAME:-local}"
+      APP_VERSION: "${APP_VERSION:-1.0.0}"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 15s

@@ -1,0 +1,27 @@
+# Secrets & environment files
+.env
+.env.*
+!.env.example
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+!terraform/staging.tfvars
+!terraform/production.tfvars
+terraform/.terraform.lock.hcl
+
+# Logs
+*.log
+health_log.txt
