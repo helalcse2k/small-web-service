@@ -33,7 +33,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: app
-          image: 277269414266.dkr.ecr.us-east-1.amazonaws.com/devops-task-care-guide-service:latest
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/devops-task-care-guide-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
