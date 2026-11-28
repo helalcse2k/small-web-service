@@ -282,7 +282,27 @@ Configure these in **GitHub → Settings → Secrets and variables → Actions**
 | `AWS_ROLE_ARN` | Secret | OIDC role for GitHub Actions |
 | `EC2_INSTANCE_ID` | Secret | Target EC2 instance ID |
 | `EC2_PUBLIC_IP` | Secret | EC2 public IP for smoke test |
+| `SLACK_WEBHOOK_URL` | Secret | Slack Incoming Webhook URL for deployment notifications (optional) |
 | `GRAFANA_ADMIN_PASSWORD` | Secret | Used locally via `.env` file |
+
+### Slack Deployment Notifications Setup
+
+The `notify` job in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) sends deployment status updates (success, failure, or rollback) to a Slack channel using an Incoming Webhook.
+
+1. **Create a Slack channel:**
+   - Open your Slack workspace, click **Channels** → **Create** → **Create a channel** (or the **`+`** icon next to Channels).
+   - Enter a channel name (e.g., `deployments` or `devops-alerts`), choose **Public** or **Private**, and click **Create**.
+2. **Create a Slack App & enable Incoming Webhooks:**
+   - Go to [Slack API: Your Apps](https://api.slack.com/apps) and click **Create New App** → **From scratch**.
+   - Name the app (e.g., `GitHub Deploy Notifier`), select your workspace, and click **Create App**.
+   - Under **Features** in the left sidebar, select **Incoming Webhooks** and toggle **Activate Incoming Webhooks** to **On**.
+   - Click **Add New Webhook to Workspace**, select the channel you created, and click **Allow**.
+   - Copy the generated **Webhook URL** (`https://hooks.slack.com/services/...`).
+3. **Add the secret to GitHub:**
+   - Go to **GitHub → Settings → Secrets and variables → Actions → New repository secret**.
+   - Set **Name** to `SLACK_WEBHOOK_URL` and paste the Webhook URL as the **Secret**.
+4. **Verify:**
+   - Trigger the **Build, Push & Deploy** workflow manually via `workflow_dispatch` (or push to `main`) to confirm the status card appears in your Slack channel.
 
 ---
 
