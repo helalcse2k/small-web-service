@@ -85,6 +85,9 @@ jobs:
     name: Deploy to EC2 & Smoke Test
     runs-on: ubuntu-latest
     needs: build-and-push
+    outputs:
+      previous_tag: ${{ steps.previous.outputs.tag }}
+      rollback_status: ${{ steps.rollback.outputs.status }}
     env:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
 
@@ -176,6 +179,7 @@ jobs:
 
       # On failure: pull and re-run the previous known-good image.
       - name: Rollback to previous image
+        id: rollback
         if: failure() && steps.previous.outputs.tag != 'none'
         run: |
           PREV_IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.previous.outputs.tag }}"
@@ -191,5 +195,84 @@ jobs:
               'docker run -d --name devops-app --restart unless-stopped -p 8080:8080 -e ENV_NAME=production ${PREV_IMAGE}',
               'docker network connect small-web-service_internal devops-app 2>/dev/null || true'
             ]"
+          echo "status=succeeded" >> "$GITHUB_OUTPUT"
           echo "::error::Deploy failed — rolled back to ${{ steps.previous.outputs.tag }}"
           exit 1
+
+  # ── Job 3: Notify Slack on success, failure, or cancellation ──────────────
+  notify:
+    name: Notify Slack
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy]
+    if: always()
+
+    steps:
+      - name: Send Slack notification
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          BUILD_RESULT: ${{ needs.build-and-push.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          PREV_TAG: ${{ needs.deploy.outputs.previous_tag }}
+          ROLLBACK_STATUS: ${{ needs.deploy.outputs.rollback_status }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::warning::SLACK_WEBHOOK_URL secret is not set; skipping Slack notification."
+            exit 0
+          fi
+
+          if [ "$BUILD_RESULT" = "success" ] && [ "$DEPLOY_RESULT" = "success" ]; then
+            STATUS="✅ *Deployment succeeded*"
+            COLOR="#2eb886"
+            DETAIL="Deployed tag \`${IMAGE_TAG}\` to production."
+          elif [ "$BUILD_RESULT" != "success" ]; then
+            STATUS="❌ *Build & Push failed* (${BUILD_RESULT})"
+            COLOR="#a30200"
+            DETAIL="Deploy did not run."
+          else
+            STATUS="❌ *Deployment failed* (${DEPLOY_RESULT})"
+            COLOR="#a30200"
+            if [ "$ROLLBACK_STATUS" = "succeeded" ]; then
+              DETAIL="Rolled back to \`${PREV_TAG}\`."
+            elif [ "$PREV_TAG" = "none" ] || [ -z "$PREV_TAG" ]; then
+              DETAIL="No previous tag available for rollback."
+            else
+              DETAIL="Rollback to \`${PREV_TAG}\` failed or was skipped."
+            fi
+          fi
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          PAYLOAD=$(jq -n \
+            --arg status "$STATUS" \
+            --arg color "$COLOR" \
+            --arg detail "$DETAIL" \
+            --arg repo "${{ github.repository }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --arg actor "${{ github.actor }}" \
+            --arg sha "${GITHUB_SHA::7}" \
+            --arg url "$RUN_URL" \
+            '{
+              attachments: [{
+                color: $color,
+                blocks: [
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: "\($status)\n\($detail)"
+                    }
+                  },
+                  {
+                    type: "context",
+                    elements: [{
+                      type: "mrkdwn",
+                      text: "*Repo:* \($repo) | *Branch:* \($branch) | *Commit:* `\($sha)` | *Actor:* \($actor) | <\($url)|View Workflow Run>"
+                    }]
+                  }
+                ]
+              }]
+            }')
+
+          curl -fsS -X POST -H 'Content-type: application/json' \
+            --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
